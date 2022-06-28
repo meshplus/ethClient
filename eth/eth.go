@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
-	"ethClient/internal/repo"
 	"ethClient/internal/solidity"
 	"fmt"
 	"github.com/Rican7/retry"
@@ -39,25 +38,47 @@ type EthRPC struct {
 }
 
 type Ethereum struct {
-	etherCli   *ethclient.Client
-	privateKey *ecdsa.PrivateKey
-	cid        *big.Int
-}
-
-type Config struct {
-	EtherAddr    string
-	KeyPath      string
-	PasswordPath string
+	etherCli *ethclient.Client
 }
 
 // New create new rpc client with given url
-func New(url string) *EthRPC {
-	rpc := &EthRPC{
-		url:    url,
-		client: http.DefaultClient,
-		log:    log.New(os.Stderr, "", log.LstdFlags),
+func New(url string, configPath string) (*EthRPC, error) {
+	var keyPath string
+	keyPath = filepath.Join(configPath, "account.key")
+
+	keyByte, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
 	}
-	return rpc
+
+	var password string
+	psdPath := filepath.Join(configPath, "password")
+	psd, err := ioutil.ReadFile(psdPath)
+	if err != nil {
+		return nil, err
+	}
+	password = strings.TrimSpace(string(psd))
+
+	unlockedKey, err := keystore.DecryptKey(keyByte, password)
+	if err != nil {
+		return nil, err
+	}
+	etherCli, err := ethclient.Dial(url)
+	if err != nil {
+		return nil, err
+	}
+	Cid, err := etherCli.ChainID(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	rpc := &EthRPC{
+		url:        url,
+		client:     http.DefaultClient,
+		privateKey: unlockedKey.PrivateKey,
+		cid:        Cid,
+		log:        log.New(os.Stderr, "", log.LstdFlags),
+	}
+	return rpc, nil
 }
 
 func (rpc *EthRPC) call(method string, target interface{}, params ...interface{}) error {
@@ -169,64 +190,8 @@ func (rpc *EthRPC) Compile(codePath string, local bool) (*CompileResult, error) 
 	return result, nil
 }
 
-func NewEther(config Config, repoRoot string) (*Ethereum, error) {
-	configPath := filepath.Join(repoRoot, "ethereum")
-	var keyPath string
-	if len(config.KeyPath) == 0 {
-		keyPath = filepath.Join(configPath, "account.key")
-	} else {
-		keyPath = config.KeyPath
-	}
-
-	etherCli, err := ethclient.Dial(config.EtherAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	keyByte, err := ioutil.ReadFile(keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var password string
-	if len(config.PasswordPath) == 0 {
-		psdPath := filepath.Join(configPath, "password")
-		psd, err := ioutil.ReadFile(psdPath)
-		if err != nil {
-			return nil, err
-		}
-		password = strings.TrimSpace(string(psd))
-	} else {
-		psd, err := ioutil.ReadFile(config.PasswordPath)
-		if err != nil {
-			return nil, err
-		}
-		password = strings.TrimSpace(string(psd))
-	}
-
-	unlockedKey, err := keystore.DecryptKey(keyByte, password)
-	if err != nil {
-		return nil, err
-	}
-
-	Cid, err := etherCli.ChainID(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return &Ethereum{
-		etherCli:   etherCli,
-		privateKey: unlockedKey.PrivateKey,
-		cid:        Cid,
-	}, nil
-}
-
-func (rpc *EthRPC) Deploy(config Config, codePath, argContract string, local bool) (string, *CompileResult, error) {
-	repoRoot, err := repo.PathRoot()
-	if err != nil {
-		return "", nil, err
-	}
-	ether, err := NewEther(config, repoRoot)
+func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string, *CompileResult, error) {
+	etherCli, err := ethclient.Dial(url)
 	if err != nil {
 		return "", nil, err
 	}
@@ -242,7 +207,7 @@ func (rpc *EthRPC) Deploy(config Config, codePath, argContract string, local boo
 		return "", nil, fmt.Errorf("empty contract")
 	}
 
-	auth, err := bind.NewKeyedTransactorWithChainID(ether.privateKey, ether.cid)
+	auth, err := bind.NewKeyedTransactorWithChainID(rpc.privateKey, rpc.cid)
 	if err != nil {
 		return "", nil, err
 	}
@@ -281,14 +246,14 @@ func (rpc *EthRPC) Deploy(config Config, codePath, argContract string, local boo
 			}
 		}
 
-		addr1, tx, _, err := bind.DeployContract(auth, parsed, common.FromHex(code), ether.etherCli, argx...)
+		addr1, tx, _, err := bind.DeployContract(auth, parsed, common.FromHex(code), etherCli, argx...)
 		addr = addr1
 		if err != nil {
 			return "", nil, err
 		}
 		var r *types1.Receipt
 		if err := retry.Retry(func(attempt uint) error {
-			r, err = ether.etherCli.TransactionReceipt(context.Background(), tx.Hash())
+			r, err = etherCli.TransactionReceipt(context.Background(), tx.Hash())
 			if err != nil {
 				return err
 			}
@@ -316,31 +281,60 @@ func (rpc *EthRPC) Deploy(config Config, codePath, argContract string, local boo
 	return addr.Hex(), compileResult, nil
 }
 
-//// EthSendTransaction creates new message call transaction or a contract creation, if the data field contains code.
-//func (rpc *EthRPC) EthSendTransaction(data hexutil.Bytes) (common.Hash, error) {
-//	var hash common.Hash
-//
-//	err := rpc.call("eth_sendRawTransaction", &hash, data)
-//	return hash, err
-//}
-
 // EthSendTransaction creates new message call transaction or a contract creation, if the data field contains code.
+func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
+	var hash common.Hash
+	too := common.HexToAddress(transaction.To)
+	tx := types1.NewTx(&types1.LegacyTx{
+		Nonce:    uint64(transaction.Nonce),
+		To:       &too,
+		Value:    transaction.Value,
+		Gas:      uint64(transaction.Gas),
+		GasPrice: transaction.GasPrice,
+		Data:     []byte{},
+	})
+	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
+	if err != nil {
+		return hash, err
+	}
+	data, err := signTx.MarshalBinary()
+	rawTx := hexutil.Bytes(data)
+	return rpc.EthSendRawTransaction(rawTx)
+}
 
-func (rpc *EthRPC) EthSendTransactionWithReceipt() {
-
+func (rpc *EthRPC) SendTransactionWithReceipt(transaction *T) (map[string]interface{}, error) {
+	too := common.HexToAddress(transaction.To)
+	tx := types1.NewTx(&types1.LegacyTx{
+		Nonce:    uint64(transaction.Nonce),
+		To:       &too,
+		Value:    transaction.Value,
+		Gas:      uint64(transaction.Gas),
+		GasPrice: transaction.GasPrice,
+		Data:     []byte{},
+	})
+	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
+	if err != nil {
+		return nil, err
+	}
+	data, err := signTx.MarshalBinary()
+	rawTx := hexutil.Bytes(data)
+	hash, err := rpc.EthSendRawTransaction(rawTx)
+	if err != nil {
+		return nil, err
+	}
+	return rpc.EthGetTransactionReceipt(hash)
 }
 
 // EthGetTransactionReceipt returns the receipt of a transaction by transaction hash.
 // Note That the receipt is not available for pending transactions.
-func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (*TransactionReceipt, error) {
-	transactionReceipt := new(TransactionReceipt)
-
-	err := rpc.call("eth_getTransactionReceipt", transactionReceipt, hash)
+func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (map[string]interface{}, error) {
+	mp := map[string]interface{}{}
+	err := rpc.call("eth_getTransactionReceipt", mp, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	return transactionReceipt, nil
+	return mp, nil
 }
 
 // EthSendRawTransaction creates new message call transaction or a contract creation for signed transactions.
