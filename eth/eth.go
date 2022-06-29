@@ -317,7 +317,6 @@ func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
 		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
 	}
 	nonce, err := rpc.EthGetTransactionCount(crypto.PubkeyToAddress(*publicKeyECDSA).String(), "latest")
-	fmt.Println("nonce", nonce)
 	if err != nil {
 		return hash, err
 	}
@@ -342,7 +341,12 @@ func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
 
 func (rpc *EthRPC) EthSendTransactionWithReceipt(transaction *T) (map[string]interface{}, error) {
 	too := common.HexToAddress(transaction.To)
-	nonce, err := rpc.EthGetTransactionCount(transaction.From, "latest")
+	pubkey := rpc.privateKey.Public()
+	publicKeyECDSA, ok := pubkey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+	nonce, err := rpc.EthGetTransactionCount(crypto.PubkeyToAddress(*publicKeyECDSA).String(), "latest")
 	if err != nil {
 		return nil, err
 	}
