@@ -1,4 +1,4 @@
-pragma solidity >=0.6.9 <=0.8.15;
+pragma solidity >=0.6.9 <=0.7.6;
 pragma experimental ABIEncoderV2;
 
 contract Broker {

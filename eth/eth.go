@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/compiler"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	types1 "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"io/ioutil"
 	"log"
@@ -94,11 +95,6 @@ func (rpc *EthRPC) call(method string, target interface{}, params ...interface{}
 	return json.Unmarshal(result, target)
 }
 
-// URL returns client url
-func (rpc *EthRPC) URL() string {
-	return rpc.url
-}
-
 // Call returns raw response of method call
 func (rpc *EthRPC) Call(method string, params ...interface{}) (json.RawMessage, error) {
 	request := ethRequest{
@@ -107,12 +103,10 @@ func (rpc *EthRPC) Call(method string, params ...interface{}) (json.RawMessage, 
 		Method:  method,
 		Params:  params,
 	}
-
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
-
 	response, err := rpc.client.Post(rpc.url, "application/json", bytes.NewBuffer(body))
 	if response != nil {
 		defer response.Body.Close()
@@ -120,7 +114,6 @@ func (rpc *EthRPC) Call(method string, params ...interface{}) (json.RawMessage, 
 	if err != nil {
 		return nil, err
 	}
-
 	data, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
@@ -141,6 +134,11 @@ func (rpc *EthRPC) Call(method string, params ...interface{}) (json.RawMessage, 
 
 	return resp.Result, nil
 
+}
+
+// URL returns client url
+func (rpc *EthRPC) URL() string {
+	return rpc.url
 }
 
 func (rpc *EthRPC) CompileContract(code string) (*CompileResult, error) {
@@ -206,7 +204,6 @@ func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string
 	if len(compileResult.Abi) == 0 || len(compileResult.Bin) == 0 || len(compileResult.Types) == 0 {
 		return "", nil, fmt.Errorf("empty contract")
 	}
-
 	auth, err := bind.NewKeyedTransactorWithChainID(rpc.privateKey, rpc.cid)
 	if err != nil {
 		return "", nil, err
@@ -221,7 +218,6 @@ func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string
 			return "", nil, err
 		}
 		code := strings.TrimPrefix(strings.TrimSpace(bin), "0x")
-
 		// prepare for constructor parameters
 		var argx []interface{}
 		if len(argContract) != 0 {
@@ -245,7 +241,6 @@ func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string
 				return "", nil, err
 			}
 		}
-
 		addr1, tx, _, err := bind.DeployContract(auth, parsed, common.FromHex(code), etherCli, argx...)
 		addr = addr1
 		if err != nil {
@@ -273,6 +268,7 @@ func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string
 		f := strings.TrimSuffix(base, ext)
 		filename := fmt.Sprintf("%s.abi", f)
 		p := filepath.Join(dir, filename)
+		fmt.Println(p)
 		err = ioutil.WriteFile(p, []byte(compileResult.Abi[i]), 0644)
 		if err != nil {
 			return "", nil, err
@@ -281,16 +277,58 @@ func (rpc *EthRPC) Deploy(url, codePath, argContract string, local bool) (string
 	return addr.Hex(), compileResult, nil
 }
 
+// EthGasPrice returns the current price per gas in wei.
+func (rpc *EthRPC) EthGasPrice() (big.Int, error) {
+	var response string
+	if err := rpc.call("eth_gasPrice", &response); err != nil {
+		return big.Int{}, err
+	}
+
+	return ParseBigInt(response)
+}
+
+// EthGetBalance returns the balance of the account of given address in wei.
+func (rpc *EthRPC) EthGetBalance(address, block string) (big.Int, error) {
+	var response string
+	if err := rpc.call("eth_getBalance", &response, address, block); err != nil {
+		return big.Int{}, err
+	}
+	return ParseBigInt(response)
+}
+
+// EthGetTransactionCount returns the number of transactions sent from an address.
+func (rpc *EthRPC) EthGetTransactionCount(address, block string) (int, error) {
+	var response string
+
+	if err := rpc.call("eth_getTransactionCount", &response, address, block); err != nil {
+		return 0, err
+	}
+
+	return ParseInt(response)
+}
+
 // EthSendTransaction creates new message call transaction or a contract creation, if the data field contains code.
 func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
 	var hash common.Hash
 	too := common.HexToAddress(transaction.To)
+	pubkey := rpc.privateKey.Public()
+	publicKeyECDSA, ok := pubkey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+	nonce, err := rpc.EthGetTransactionCount(crypto.PubkeyToAddress(*publicKeyECDSA).String(), "latest")
+	fmt.Println("nonce", nonce)
+	if err != nil {
+		return hash, err
+	}
+	gasLimit := uint64(21000)
+	gasPrice, err := rpc.EthGasPrice()
 	tx := types1.NewTx(&types1.LegacyTx{
-		Nonce:    uint64(transaction.Nonce),
+		Nonce:    uint64(nonce),
 		To:       &too,
 		Value:    transaction.Value,
-		Gas:      uint64(transaction.Gas),
-		GasPrice: transaction.GasPrice,
+		Gas:      gasLimit,
+		GasPrice: &gasPrice,
 		Data:     []byte{},
 	})
 	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
@@ -302,14 +340,20 @@ func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
 	return rpc.EthSendRawTransaction(rawTx)
 }
 
-func (rpc *EthRPC) SendTransactionWithReceipt(transaction *T) (map[string]interface{}, error) {
+func (rpc *EthRPC) EthSendTransactionWithReceipt(transaction *T) (map[string]interface{}, error) {
 	too := common.HexToAddress(transaction.To)
+	nonce, err := rpc.EthGetTransactionCount(transaction.From, "latest")
+	if err != nil {
+		return nil, err
+	}
+	gasLimit := uint64(21000)
+	gasPrice, err := rpc.EthGasPrice()
 	tx := types1.NewTx(&types1.LegacyTx{
-		Nonce:    uint64(transaction.Nonce),
+		Nonce:    uint64(nonce),
 		To:       &too,
 		Value:    transaction.Value,
-		Gas:      uint64(transaction.Gas),
-		GasPrice: transaction.GasPrice,
+		Gas:      gasLimit,
+		GasPrice: &gasPrice,
 		Data:     []byte{},
 	})
 	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
@@ -328,7 +372,7 @@ func (rpc *EthRPC) SendTransactionWithReceipt(transaction *T) (map[string]interf
 // EthGetTransactionReceipt returns the receipt of a transaction by transaction hash.
 // Note That the receipt is not available for pending transactions.
 func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (map[string]interface{}, error) {
-	mp := map[string]interface{}{}
+	var mp map[string]interface{}
 	err := rpc.call("eth_getTransactionReceipt", mp, hash)
 	if err != nil {
 		return nil, err
@@ -340,14 +384,73 @@ func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (map[string]interf
 // EthSendRawTransaction creates new message call transaction or a contract creation for signed transactions.
 func (rpc *EthRPC) EthSendRawTransaction(data hexutil.Bytes) (common.Hash, error) {
 	var hash common.Hash
-
 	err := rpc.call("eth_sendRawTransaction", &hash, data)
 	return hash, err
 }
 
 //Eth Invoke method
-func (rpc *EthRPC) InvokeEthContract(method string, args ...interface{}) (json.RawMessage, error) {
-	return rpc.Call(method, args)
+func (rpc *EthRPC) InvokeEthContract(abiPath, address string, method, args string) (common.Hash, error) {
+	var hash common.Hash
+	file, err := ioutil.ReadFile(abiPath)
+	if err != nil {
+		return hash, err
+	}
+	ab, err := abi.JSON(bytes.NewReader(file))
+	if err != nil {
+		return hash, err
+	}
+	// prepare for invoke parameters
+	var argx []interface{}
+	if len(args) != 0 {
+		argSplits := strings.Split(args, "^")
+		var argArr []interface{}
+		for _, arg := range argSplits {
+			if strings.Index(arg, "[") == 0 && strings.LastIndex(arg, "]") == len(arg)-1 {
+				if len(arg) == 2 {
+					argArr = append(argArr, make([]string, 0))
+					continue
+				}
+				// deal with slice
+				argSp := strings.Split(arg[1:len(arg)-1], ",")
+				argArr = append(argArr, argSp)
+				continue
+			}
+			argArr = append(argArr, arg)
+		}
+		argx, err = solidity.Encode(ab, method, argArr...)
+		if err != nil {
+			return hash, err
+		}
+	}
+	packed, err := ab.Pack(method, argx...)
+	if err != nil {
+		return hash, err
+	}
+	fmt.Printf("\n======= invoke function %s =======\n", method)
+	to := common.HexToAddress(address)
+	gasLimit := uint64(21000)
+	gasPrice, err := rpc.EthGasPrice()
+	pubkey := rpc.privateKey.Public()
+	publicKeyECDSA, ok := pubkey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+	nonce, err := rpc.EthGetTransactionCount(crypto.PubkeyToAddress(*publicKeyECDSA).String(), "latest")
+	tx := types1.NewTx(&types1.LegacyTx{
+		Nonce:    uint64(nonce),
+		To:       &to,
+		Gas:      gasLimit,
+		GasPrice: &gasPrice,
+		Data:     packed,
+	})
+	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
+	if err != nil {
+		return hash, err
+	}
+	data, err := signTx.MarshalBinary()
+	rawTx := hexutil.Bytes(data)
+	return rpc.EthSendRawTransaction(rawTx)
+
 }
 
 // Eth1 returns 1 ethereum value (10^18 wei)
