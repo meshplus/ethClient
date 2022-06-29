@@ -1,8 +1,8 @@
 package main
 
 import (
-	"ethClient/eth"
 	"fmt"
+	"github.com/meshplus/ethClient/eth"
 	"log"
 	"time"
 )

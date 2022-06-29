@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"strconv"
 
-	"ethClient/internal/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/meshplus/bitxhub-kit/hexutil"
+	"github.com/meshplus/ethClient/internal/types"
 	"github.com/pkg/errors"
 )
 
