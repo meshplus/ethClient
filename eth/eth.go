@@ -91,7 +91,6 @@ func (rpc *EthRPC) call(method string, target interface{}, params ...interface{}
 	if target == nil {
 		return nil
 	}
-
 	return json.Unmarshal(result, target)
 }
 
@@ -131,7 +130,6 @@ func (rpc *EthRPC) Call(method string, params ...interface{}) (json.RawMessage, 
 	if resp.Error != nil {
 		return nil, *resp.Error
 	}
-
 	return resp.Result, nil
 
 }
@@ -339,7 +337,7 @@ func (rpc *EthRPC) EthSendTransaction(transaction *T) (common.Hash, error) {
 	return rpc.EthSendRawTransaction(rawTx)
 }
 
-func (rpc *EthRPC) EthSendTransactionWithReceipt(transaction *T) (map[string]interface{}, error) {
+func (rpc *EthRPC) EthSendTransactionWithReceipt(transaction *T) (*TxReceipt, error) {
 	too := common.HexToAddress(transaction.To)
 	pubkey := rpc.privateKey.Public()
 	publicKeyECDSA, ok := pubkey.(*ecdsa.PublicKey)
@@ -375,14 +373,14 @@ func (rpc *EthRPC) EthSendTransactionWithReceipt(transaction *T) (map[string]int
 
 // EthGetTransactionReceipt returns the receipt of a transaction by transaction hash.
 // Note That the receipt is not available for pending transactions.
-func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (map[string]interface{}, error) {
-	var mp map[string]interface{}
-	err := rpc.call("eth_getTransactionReceipt", mp, hash)
+func (rpc *EthRPC) EthGetTransactionReceipt(hash common.Hash) (*TxReceipt, error) {
+	txReceipt := new(TxReceipt)
+	err := rpc.call("eth_getTransactionReceipt", txReceipt, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	return mp, nil
+	return txReceipt, nil
 }
 
 // EthSendRawTransaction creates new message call transaction or a contract creation for signed transactions.

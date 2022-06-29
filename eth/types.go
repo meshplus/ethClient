@@ -3,6 +3,8 @@ package eth
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"unsafe"
 )
@@ -319,4 +321,15 @@ func (proxy *proxyBlockWithoutTransactions) toBlock() Block {
 	}
 
 	return block
+}
+
+type TxReceipt struct {
+	Type              hexutil.Uint   `json:"type"`
+	CumulativeGasUsed hexutil.Uint64 `json:"cumulativeGasUsed"`
+	TransactionHash   common.Hash    `json:"transactionHash"`
+	GasUsed           hexutil.Uint64 `json:"gasUsed"`
+	BlockHash         common.Hash    `json:"blockHash"`
+	BlockNumber       hexutil.Uint64 `json:"blockNumber"`
+	TransactionIndex  hexutil.Uint64 `json:"transactionIndex"`
+	From              common.Address `json:"from"`
 }
