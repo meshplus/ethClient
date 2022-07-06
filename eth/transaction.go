@@ -3,6 +3,7 @@ package eth
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"github.com/ethereum/go-ethereum/common"
 	"strings"
 )
 
@@ -29,4 +30,15 @@ func chPrefix(origin string) string {
 		return origin
 	}
 	return "0x" + origin
+}
+
+// Invoke add transaction isInvoke
+func (t *Transaction) Invoke(to string, payload []byte) *Transaction {
+	if string(payload[0:8]) == "fefffbce" {
+		t.payload = chPrefix("fefffbce" + common.Bytes2Hex(payload[8:]))
+	} else {
+		t.payload = chPrefix(common.Bytes2Hex(payload))
+	}
+	t.To = chPrefix(to)
+	return t
 }
