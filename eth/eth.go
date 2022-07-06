@@ -391,67 +391,8 @@ func (rpc *EthRPC) EthSendRawTransaction(data hexutil.Bytes) (common.Hash, error
 }
 
 //Eth Invoke method
-func (rpc *EthRPC) InvokeEthContract(abiPath, address string, method, args string) (common.Hash, error) {
-	var hash common.Hash
-	file, err := ioutil.ReadFile(abiPath)
-	if err != nil {
-		return hash, err
-	}
-	ab, err := abi.JSON(bytes.NewReader(file))
-	if err != nil {
-		return hash, err
-	}
-	// prepare for invoke parameters
-	var argx []interface{}
-	if len(args) != 0 {
-		argSplits := strings.Split(args, "^")
-		var argArr []interface{}
-		for _, arg := range argSplits {
-			if strings.Index(arg, "[") == 0 && strings.LastIndex(arg, "]") == len(arg)-1 {
-				if len(arg) == 2 {
-					argArr = append(argArr, make([]string, 0))
-					continue
-				}
-				// deal with slice
-				argSp := strings.Split(arg[1:len(arg)-1], ",")
-				argArr = append(argArr, argSp)
-				continue
-			}
-			argArr = append(argArr, arg)
-		}
-		argx, err = solidity.Encode(ab, method, argArr...)
-		if err != nil {
-			return hash, err
-		}
-	}
-	packed, err := ab.Pack(method, argx...)
-	if err != nil {
-		return hash, err
-	}
-	fmt.Printf("\n======= invoke function %s =======\n", method)
-	to := common.HexToAddress(address)
-	gasLimit := uint64(21000)
-	gasPrice, err := rpc.EthGasPrice()
-	pubkey := rpc.privateKey.Public()
-	publicKeyECDSA, ok := pubkey.(*ecdsa.PublicKey)
-	if !ok {
-		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
-	}
-	nonce, err := rpc.EthGetTransactionCount(crypto.PubkeyToAddress(*publicKeyECDSA).String(), "latest")
-	tx := types1.NewTx(&types1.LegacyTx{
-		Nonce:    uint64(nonce),
-		To:       &to,
-		Gas:      gasLimit,
-		GasPrice: &gasPrice,
-		Data:     packed,
-	})
-	signTx, err := types1.SignTx(tx, types1.NewEIP155Signer(big.NewInt(1356)), rpc.privateKey)
-	if err != nil {
-		return hash, err
-	}
-	data, err := signTx.MarshalBinary()
-	rawTx := hexutil.Bytes(data)
-	return rpc.EthSendRawTransaction(rawTx)
+func (rpc *EthRPC) InvokeContract(transaction *T) (*TxReceipt, error) {
+	return rpc.EthSendTransactionWithReceipt(transaction)
 
 }
 
