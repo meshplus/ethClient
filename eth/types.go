@@ -333,4 +333,5 @@ type TxReceipt struct {
 	BlockNumber       hexutil.Uint64 `json:"blockNumber"`
 	TransactionIndex  hexutil.Uint64 `json:"transactionIndex"`
 	From              common.Address `json:"from"`
+	Ret               string
 }
