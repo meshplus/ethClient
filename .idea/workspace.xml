@@ -6,7 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="884a6e74-dc64-42de-b6e9-4d4c0923e5d7" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/eth/types.go" beforeDir="false" afterPath="$PROJECT_DIR$/eth/types.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/eth/eth.go" beforeDir="false" afterPath="$PROJECT_DIR$/eth/eth.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/eth/transaction.go" beforeDir="false" afterPath="$PROJECT_DIR$/eth/transaction.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -70,6 +72,14 @@
     </key>
   </component>
   <component name="RunManager">
+    <configuration default="true" type="GoApplicationRunConfiguration" factoryName="Go Application">
+      <module name="ethClient" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="FILE" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <method v="2" />
+    </configuration>
     <configuration name="go build ethClient" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
       <module name="ethClient" />
       <working_directory value="$PROJECT_DIR$" />
@@ -77,6 +87,15 @@
       <package value="ethClient" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/main.go" />
+      <method v="2" />
+    </configuration>
+    <configuration default="true" type="GoTestRunConfiguration" factoryName="Go Test">
+      <module name="ethClient" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="DIRECTORY" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
       <method v="2" />
     </configuration>
     <recent_temporary>

@@ -42,3 +42,15 @@ func (t *Transaction) Invoke(to string, payload []byte) *Transaction {
 	t.To = chPrefix(to)
 	return t
 }
+
+// Serialize serialize the tx instance to a map
+func (t *Transaction) Serialize() interface{} {
+	param := make(map[string]interface{})
+	param["from"] = t.From
+
+	param["nonce"] = t.Nonce
+
+	param["payload"] = t.payload
+
+	return param
+}
